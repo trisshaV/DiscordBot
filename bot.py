@@ -1,37 +1,64 @@
-import lightbulb
-import hikari
 
-bot = lightbulb.BotApp(token='', default_enabled_guilds=(656434422199091221))    # With guild id's, slash commands will be registered quicker
+from pymongo import MongoClient
+import os
+from dotenv import load_dotenv
+import discord
+from discord.ext import commands
 
-@bot.listen(hikari.StartedEvent)
-async def on_start(event):
-    print('Bot has started')
+bot = commands.Bot(command_prefix='!')
+load_dotenv()
+mongo_client= os.getenv("MONGO_CLIENT")
 
-# The order these decorators appear before each other is IMPORTANT
-@bot.command
-@lightbulb.command('ping', 'Says pong!')
-@lightbulb.implements(lightbulb.SlashCommand) # Slash commands
-async def ping(ctx):    #context object
-    await ctx.respond('Pong!')
+cluster = MongoClient(mongo_client)
+db = cluster["Discord"]
+collection = db["Shows"]
+
+@bot.event
+async def on_ready():
+    print('Logged in')
+
+# Add SHOW/MOVIE to the users list
+@bot.command(name='add', help='Adds a show or movie to the users list')
+async def addShow(ctx, *, show_name: str):
+    userID = ctx.message.author.id
+    collection.update_one({"_id": userID}, {"$addToSet":{'shows': show_name}}, upsert=True)
+    await ctx.send(f"Added {show_name} to your list")
+
+# Displays all SHOW/MOVIES a user has on their list
+@bot.command(name='list', help='Displays all shows or movies currently on a users list')
+async def userList(ctx):
+    userID = ctx.message.author.id
+    result = collection.find_one({"_id": userID})
+    embed = discord.Embed(title="To Watch", color= discord.Color.blue())
+    embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.avatar_url)
+    userShows = []
+    cnt = 0
+    if result == None:
+        value = "** **"
+    else:
+        for show in result["shows"]:
+            cnt+=1
+            show = f"{cnt}. {show}\t"
+            userShows.append(show)
+
+        value = '\n'.join(userShows)
+
+    embed.add_field(name="_Your currently tracked shows or movies:_", value=value, inline=False)
+    await ctx.send(embed=embed)
+
+# Mark a SHOW/MOVIE as watched
+@bot.command(name='watched', help='Marks a show or movie on a users list as watched')
+async def usersWatched(ctx, *, show_name: str):
+    userID = ctx.message.author.id
+    collection.update_one({"_id":userID, 'shows': show_name}, {"$set":{'shows.$': '~~' + show_name + '~~'}})
+    await ctx.send(f"Watched {show_name}")
     
-@bot.command
-@lightbulb.command('group', 'This is a group')
-@lightbulb.implements(lightbulb.SlashCommandGroup)
-async def my_group(ctx):
-    pass
-
-@my_group.child        # Subcommand
-@lightbulb.command('subcommand', 'This is a subcommand')
-@lightbulb.implements(lightbulb.SlashSubCommand)
-async def subcommand(ctx):
-    await ctx.respond('I am a subcommand')
+@bot.command(name='delete', help='Deletes a show or movie on a users list')
+async def deleteShow(ctx, *, show_name: str):
+    userID = ctx.message.author.id
+    collection.update_one({"_id": userID}, {"$pull":{'shows': {"$regex": show_name}}})
+    await ctx.send(f"Removed {show_name} from your list")
     
-@bot.command
-@lightbulb.option('num1', 'The first number', type=int)
-@lightbulb.option('num2', 'The second number', type=int) # must be above command decorator
-@lightbulb.command('add', 'Add two numbers together')
-@lightbulb.implements(lightbulb.SlashCommand)
-async def add(ctx):
-    await ctx.respond(ctx.options.num1 + ctx.options.num2)
-
-bot.run()
+load_dotenv()
+token = os.getenv("DISCORD_TOKEN")
+bot.run(token)
