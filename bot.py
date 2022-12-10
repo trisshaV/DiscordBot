@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import discord
 from discord.ext import commands
 
-bot = commands.Bot(command_prefix='!')
+bot = commands.Bot(command_prefix='?')
 load_dotenv()
 mongo_client= os.getenv("MONGO_CLIENT")
 
@@ -31,6 +31,7 @@ async def userList(ctx):
     result = collection.find_one({"_id": userID})
     embed = discord.Embed(title="To Watch", color= discord.Color.blue())
     embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.avatar_url)
+    embed.set_thumbnail(url="https://pa1.narvii.com/7006/125a186b2efcb1bdcc07c9fb7e61abfb6e396b55r1-500-407_hq.gif")
     userShows = []
     cnt = 0
     if result == None:
